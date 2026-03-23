@@ -125,6 +125,15 @@ export function handleConnection(ws: WebSocket): void {
     sessionId: '',
     cwd: config.defaultCwd,
   });
+
+  // Warn if API key is not configured
+  if (!config.apiKey) {
+    send(ws, {
+      type: 'error',
+      message: 'ANTHROPIC_API_KEY is not set. Add it to your .env file and restart the server.',
+      code: 'NO_API_KEY',
+    });
+  }
 }
 
 function send(ws: WebSocket, msg: ServerMessage): void {

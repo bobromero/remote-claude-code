@@ -29,6 +29,9 @@ export async function runAgent(
 
   const queryOptions: Parameters<typeof sdkQuery>[0]['options'] = {
     cwd: merged.cwd,
+    // Explicitly pass env with the API key so the subprocess always has it,
+    // even if .env wasn't loaded before the SDK initialized
+    env: { ...process.env, ANTHROPIC_API_KEY: config.apiKey },
     permissionMode: merged.permissionMode as 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
     allowedTools: merged.allowedTools.length > 0 ? merged.allowedTools : undefined,
     disallowedTools: merged.disallowedTools.length > 0 ? merged.disallowedTools : undefined,
@@ -57,6 +60,7 @@ export async function runAgent(
   let q: Query | null = null;
 
   try {
+    console.log(`[agent] Starting query in ${merged.cwd} (permissionMode: ${merged.permissionMode})`);
     q = sdkQuery({ prompt: options.prompt, options: queryOptions });
 
     for await (const message of q) {
@@ -68,11 +72,13 @@ export async function runAgent(
         sessionId = message.session_id;
       }
     }
+    console.log(`[agent] Query completed (session: ${sessionId || 'none'})`);
   } catch (err: unknown) {
     if (abortController.signal.aborted) {
       send(ws, { type: 'error', message: 'Query aborted', code: 'ABORT' });
     } else {
       const errMsg = err instanceof Error ? err.message : String(err);
+      console.error('[agent] SDK error:', errMsg);
       send(ws, { type: 'error', message: errMsg, code: 'SDK_ERROR' });
     }
   } finally {

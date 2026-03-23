@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { Group as PanelGroup, Panel, Separator } from 'react-resizable-panels';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { Sidebar } from './Sidebar';
 import { FileExplorer } from '@/components/files/FileExplorer';
 import { useChat } from '@/hooks/useChat';
@@ -14,7 +13,11 @@ import { Wifi, WifiOff, GripVertical } from 'lucide-react';
 export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [changedFiles, setChangedFiles] = useState<Set<string>>(new Set());
+  const [filesPanelWidth, setFilesPanelWidth] = useState(360);
   const chat = useChat();
+
+  const isDragging = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const handleNewChat = useCallback(() => {
     chat.clearMessages();
@@ -40,6 +43,33 @@ export function AppShell() {
 
   const isRunning = chat.status !== 'idle';
 
+  // Drag-to-resize for the file panel
+  const onMouseDown = useCallback(() => {
+    isDragging.current = true;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, []);
+
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      if (!isDragging.current || !containerRef.current) return;
+      const rect = containerRef.current.getBoundingClientRect();
+      const newWidth = Math.max(200, Math.min(e.clientX - rect.left, rect.width - 300));
+      setFilesPanelWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      isDragging.current = false;
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []);
+
   return (
     <div className="flex h-screen overflow-hidden bg-white dark:bg-zinc-900">
       <Sidebar
@@ -53,7 +83,7 @@ export function AppShell() {
         onOpenSettings={() => {}}
       />
 
-      <div className="flex-1 flex flex-col min-w-0">
+      <div ref={containerRef} className="flex-1 flex flex-col min-w-0">
         {/* Top bar */}
         <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-700 px-4 py-2">
           <div className="flex items-center gap-2">
@@ -65,11 +95,9 @@ export function AppShell() {
             )}
           </div>
           <div className="flex items-center gap-2 text-xs text-zinc-500 dark:text-zinc-400">
-            {chat.cwd && (
-              <span className="font-mono truncate max-w-[300px]" title={chat.cwd}>
-                {chat.cwd}
-              </span>
-            )}
+            <span className="font-mono truncate max-w-[400px]" title={chat.cwd || 'Connecting...'}>
+              {chat.cwd || 'Connecting...'}
+            </span>
             {chat.wsStatus === 'connected' ? (
               <Wifi className="h-3.5 w-3.5 text-green-500" />
             ) : (
@@ -78,32 +106,39 @@ export function AppShell() {
           </div>
         </div>
 
-        {/* Split pane: file explorer + chat */}
-        <PanelGroup orientation="horizontal" className="flex-1 min-h-0">
-          <Panel defaultSize={35} minSize={20} maxSize={50}>
+        {/* Main content: file explorer + chat, side by side */}
+        <div className="flex-1 flex min-h-0">
+          {/* File explorer */}
+          <div
+            className="h-full overflow-hidden border-r border-zinc-200 dark:border-zinc-700"
+            style={{ width: filesPanelWidth, minWidth: 200, flexShrink: 0 }}
+          >
             <FileExplorer cwd={chat.cwd} changedFiles={changedFiles} />
-          </Panel>
+          </div>
 
-          <Separator className="w-1.5 bg-zinc-100 dark:bg-zinc-800 hover:bg-blue-200 dark:hover:bg-blue-800 transition-colors flex items-center justify-center cursor-col-resize">
+          {/* Drag handle */}
+          <div
+            onMouseDown={onMouseDown}
+            className="w-1.5 h-full flex-shrink-0 bg-zinc-100 dark:bg-zinc-800 hover:bg-blue-300 dark:hover:bg-blue-700 transition-colors flex items-center justify-center cursor-col-resize"
+          >
             <GripVertical className="h-4 w-4 text-zinc-400" />
-          </Separator>
+          </div>
 
-          <Panel defaultSize={70} minSize={30}>
-            <div className="flex h-full flex-col overflow-hidden">
-              <MessageList messages={chat.messages} isThinking={chat.status === 'thinking'} />
-              <PermissionDialog
-                request={chat.permissionRequest}
-                onRespond={chat.respondToPermission}
-              />
-              <ChatInput
-                onSend={chat.sendMessage}
-                onAbort={chat.abort}
-                disabled={chat.wsStatus !== 'connected'}
-                isRunning={isRunning}
-              />
-            </div>
-          </Panel>
-        </PanelGroup>
+          {/* Chat panel */}
+          <div className="flex-1 min-w-0 h-full flex flex-col overflow-hidden">
+            <MessageList messages={chat.messages} isThinking={chat.status === 'thinking'} />
+            <PermissionDialog
+              request={chat.permissionRequest}
+              onRespond={chat.respondToPermission}
+            />
+            <ChatInput
+              onSend={chat.sendMessage}
+              onAbort={chat.abort}
+              disabled={chat.wsStatus !== 'connected'}
+              isRunning={isRunning}
+            />
+          </div>
+        </div>
       </div>
     </div>
   );

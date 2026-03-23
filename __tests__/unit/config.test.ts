@@ -24,10 +24,17 @@ describe('config', () => {
     expect(getConfig().defaultCwd).toBe(process.cwd());
   });
 
-  it('reads DEFAULT_CWD from env', async () => {
-    process.env.DEFAULT_CWD = '/custom/path';
+  it('reads DEFAULT_CWD from env when path exists', async () => {
+    // Use a path that actually exists on the filesystem
+    process.env.DEFAULT_CWD = '/tmp';
     const { getConfig } = await import('@/lib/config');
-    expect(getConfig().defaultCwd).toBe('/custom/path');
+    expect(getConfig().defaultCwd).toBe('/tmp');
+  });
+
+  it('falls back to project root when DEFAULT_CWD does not exist', async () => {
+    process.env.DEFAULT_CWD = '/nonexistent/path';
+    const { getConfig } = await import('@/lib/config');
+    expect(getConfig().defaultCwd).toBe(process.cwd());
   });
 
   it('defaults permissionMode to default', async () => {

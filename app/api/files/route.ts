@@ -7,11 +7,16 @@ export async function GET(request: NextRequest) {
   const cwd = request.nextUrl.searchParams.get('cwd') ?? getConfig().defaultCwd;
   const depth = Number(request.nextUrl.searchParams.get('depth')) || 3;
 
+  if (!cwd) {
+    return NextResponse.json({ error: 'No working directory specified' }, { status: 400 });
+  }
+
   try {
     const tree = await buildFileTree(cwd, depth);
     return NextResponse.json({ tree });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Failed to read directory';
-    return NextResponse.json({ error: message }, { status: 500 });
+    const status = message.includes('not found') ? 404 : 500;
+    return NextResponse.json({ error: message }, { status });
   }
 }

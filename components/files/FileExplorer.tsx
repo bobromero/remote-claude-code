@@ -1,6 +1,6 @@
 'use client';
 
-import { FolderTree, RefreshCw } from 'lucide-react';
+import { FolderTree, RefreshCw, AlertCircle } from 'lucide-react';
 import { FileTree } from './FileTree';
 import { FileViewer } from './FileViewer';
 import { Spinner } from '@/components/ui/Spinner';
@@ -12,7 +12,7 @@ type FileExplorerProps = {
 };
 
 export function FileExplorer({ cwd, changedFiles }: FileExplorerProps) {
-  const { tree, loading, selectedFile, fileContent, fetchTree, selectFile } = useFileTree(cwd);
+  const { tree, loading, error, selectedFile, fileContent, fetchTree, selectFile } = useFileTree(cwd);
 
   if (selectedFile && fileContent) {
     return (
@@ -47,6 +47,17 @@ export function FileExplorer({ cwd, changedFiles }: FileExplorerProps) {
         {loading ? (
           <div className="flex items-center justify-center py-8">
             <Spinner size="sm" />
+          </div>
+        ) : error ? (
+          <div className="flex flex-col items-center gap-2 py-6 px-3 text-center">
+            <AlertCircle className="h-5 w-5 text-amber-500" />
+            <p className="text-xs text-zinc-500 dark:text-zinc-400">{error}</p>
+            <button
+              onClick={fetchTree}
+              className="text-xs text-blue-500 hover:text-blue-600 underline cursor-pointer"
+            >
+              Retry
+            </button>
           </div>
         ) : tree ? (
           <FileTree

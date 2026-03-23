@@ -1,3 +1,8 @@
+// Load .env files BEFORE any other imports that read process.env
+// (the SDK reads ANTHROPIC_API_KEY at import time)
+import { loadEnvConfig } from '@next/env';
+loadEnvConfig(process.cwd());
+
 import { createServer } from 'http';
 import next from 'next';
 import { attachWebSocketServer } from './lib/ws/server';

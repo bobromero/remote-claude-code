@@ -141,9 +141,9 @@ export function useChat() {
       }
 
       case 'error': {
-        // If streaming, append error to current message
         const id = currentAssistantIdRef.current;
         if (id) {
+          // Append error to current assistant message
           setMessages((prev) =>
             prev.map((m) =>
               m.id === id
@@ -152,6 +152,18 @@ export function useChat() {
             ),
           );
           currentAssistantIdRef.current = null;
+        } else {
+          // No active assistant message — show error as a standalone message
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: crypto.randomUUID(),
+              role: 'assistant',
+              content: `**Error:** ${msg.message}`,
+              timestamp: new Date(),
+              isStreaming: false,
+            },
+          ]);
         }
         setStatus('idle');
         break;

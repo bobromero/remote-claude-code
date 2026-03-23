@@ -1,4 +1,4 @@
-import { readdir, stat, readFile } from 'fs/promises';
+import { readdir, stat, readFile, access } from 'fs/promises';
 import { join, relative, resolve } from 'path';
 import ignore from 'ignore';
 
@@ -13,10 +13,37 @@ export type FileNode = {
 const ALWAYS_IGNORE = ['node_modules', '.git', '.next', 'dist', '.DS_Store', '__pycache__'];
 const MAX_FILE_SIZE = 1_048_576; // 1MB
 
+/**
+ * Check if a path exists and is accessible.
+ */
+export async function pathExists(p: string): Promise<boolean> {
+  try {
+    await access(p);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function buildFileTree(
   cwd: string,
   maxDepth = 3,
 ): Promise<FileNode> {
+  // Verify the directory exists before trying to read it
+  if (!cwd) {
+    throw new Error('No working directory specified');
+  }
+
+  const exists = await pathExists(cwd);
+  if (!exists) {
+    throw new Error(`Directory not found: ${cwd}`);
+  }
+
+  const stats = await stat(cwd);
+  if (!stats.isDirectory()) {
+    throw new Error(`Path is not a directory: ${cwd}`);
+  }
+
   const ig = ignore();
 
   // Load .gitignore if it exists
@@ -118,7 +145,15 @@ export async function readFileContent(
     throw new Error('Path traversal detected');
   }
 
+  const exists = await pathExists(fullPath);
+  if (!exists) {
+    throw new Error(`File not found: ${filePath}`);
+  }
+
   const stats = await stat(fullPath);
+  if (!stats.isFile()) {
+    throw new Error(`Path is not a file: ${filePath}`);
+  }
   if (stats.size > MAX_FILE_SIZE) {
     throw new Error('File too large (>1MB)');
   }
