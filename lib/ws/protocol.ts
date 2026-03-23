@@ -56,6 +56,7 @@ export type ServerMessage =
   | PermissionRequestMessage
   | ResultMessage
   | ErrorMessage
+  | ApiRetryMessage
   | FileChangedMessage
   | SessionInfoMessage
   | StatusMessage;
@@ -104,6 +105,15 @@ export type ErrorMessage = {
   type: 'error';
   message: string;
   code?: string;
+};
+
+export type ApiRetryMessage = {
+  type: 'api_retry';
+  error: string;
+  attempt: number;
+  maxRetries: number;
+  retryDelayMs: number;
+  errorStatus: number | null;
 };
 
 export type FileChangedMessage = {

@@ -27,11 +27,24 @@ export async function runAgent(
     return { sessionId: '' };
   }
 
+  // Debug: verify key integrity and check for interfering env vars
+  const key = config.apiKey;
+  const maskedKey = key.length > 20
+    ? `${key.slice(0, 12)}...${key.slice(-4)} (len=${key.length})`
+    : `(len=${key.length})`;
+  console.log(`[agent] API key: ${maskedKey}`);
+  const anthropicEnvVars = Object.keys(process.env)
+    .filter((k) => /^(ANTHROPIC_|CLAUDE_)/i.test(k))
+    .map((k) => k === 'ANTHROPIC_API_KEY' ? `${k}=(set, len=${process.env[k]?.length})` : `${k}=${process.env[k]}`);
+  if (anthropicEnvVars.length > 0) {
+    console.log(`[agent] Anthropic/Claude env vars: ${anthropicEnvVars.join(', ')}`);
+  }
+
+  const sdkEnv: Record<string, string | undefined> = { ...process.env, ANTHROPIC_API_KEY: config.apiKey };
+
   const queryOptions: Parameters<typeof sdkQuery>[0]['options'] = {
     cwd: merged.cwd,
-    // Explicitly pass env with the API key so the subprocess always has it,
-    // even if .env wasn't loaded before the SDK initialized
-    env: { ...process.env, ANTHROPIC_API_KEY: config.apiKey },
+    env: sdkEnv,
     permissionMode: merged.permissionMode as 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
     allowedTools: merged.allowedTools.length > 0 ? merged.allowedTools : undefined,
     disallowedTools: merged.disallowedTools.length > 0 ? merged.disallowedTools : undefined,
@@ -65,9 +78,14 @@ export async function runAgent(
 
     for await (const message of q) {
       if (abortController.signal.aborted) break;
+
+      // Verbose logging for diagnosing billing/auth/retry issues
+      if (message.type === 'system' || message.type === 'result') {
+        console.log(`[agent] SDK ${message.type}:`, JSON.stringify(message).slice(0, 800));
+      }
+
       processMessage(ws, message);
 
-      // Capture session ID from any message that has it
       if ('session_id' in message && message.session_id) {
         sessionId = message.session_id;
       }
@@ -78,7 +96,15 @@ export async function runAgent(
       send(ws, { type: 'error', message: 'Query aborted', code: 'ABORT' });
     } else {
       const errMsg = err instanceof Error ? err.message : String(err);
-      console.error('[agent] SDK error:', errMsg);
+      const errDetails: Record<string, unknown> = { message: errMsg };
+      if (err instanceof Error) {
+        if (err.name) errDetails.name = err.name;
+        if (err.cause) errDetails.cause = err.cause;
+        if ('code' in err) errDetails.code = (err as { code: unknown }).code;
+        if ('status' in err) errDetails.status = (err as { status: unknown }).status;
+        if ('error' in err) errDetails.error = (err as { error: unknown }).error;
+      }
+      console.error('[agent] SDK error:', JSON.stringify(errDetails, null, 2));
       send(ws, { type: 'error', message: errMsg, code: 'SDK_ERROR' });
     }
   } finally {
@@ -97,12 +123,40 @@ function processMessage(ws: WebSocket, message: SDKMessage): void {
           sessionId: message.session_id,
           cwd: message.cwd,
         });
+      } else if (message.subtype === 'api_retry') {
+        const retry = message as {
+          error: string;
+          attempt: number;
+          max_retries: number;
+          retry_delay_ms: number;
+          error_status: number | null;
+        };
+        console.warn(
+          `[agent] API retry ${retry.attempt}/${retry.max_retries}: ${retry.error}` +
+          ` (HTTP ${retry.error_status ?? 'N/A'}, delay ${retry.retry_delay_ms}ms)`,
+        );
+        send(ws, {
+          type: 'api_retry',
+          error: retry.error,
+          attempt: retry.attempt,
+          maxRetries: retry.max_retries,
+          retryDelayMs: retry.retry_delay_ms,
+          errorStatus: retry.error_status,
+        });
       }
       break;
     }
 
     case 'assistant': {
-      // Full assistant message — extract text and tool_use blocks
+      if (message.error) {
+        console.warn(`[agent] Assistant message has error: ${message.error}`);
+        send(ws, {
+          type: 'error',
+          message: `API error: ${message.error}`,
+          code: message.error,
+        });
+      }
+
       const betaMessage = message.message;
       if (betaMessage && 'content' in betaMessage) {
         for (const block of betaMessage.content) {
@@ -149,10 +203,15 @@ function processMessage(ws: WebSocket, message: SDKMessage): void {
     }
 
     case 'result': {
+      const isError = 'is_error' in message && message.is_error;
+      const resultText = message.subtype === 'success' && !isError
+        ? message.result
+        : '';
+
       const resultMsg: ServerMessage = {
         type: 'result',
         sessionId: message.session_id,
-        text: message.subtype === 'success' ? message.result : '',
+        text: resultText,
       };
       if ('usage' in message && message.usage) {
         resultMsg.cost = {
@@ -164,8 +223,16 @@ function processMessage(ws: WebSocket, message: SDKMessage): void {
       send(ws, resultMsg);
       send(ws, { type: 'status', status: 'idle' });
 
-      // If it was an error result, also send error details
-      if (message.subtype !== 'success' && 'errors' in message && message.errors?.length) {
+      // SDK can return subtype "success" with is_error: true (e.g. billing failures)
+      if (isError && message.subtype === 'success' && 'result' in message) {
+        const errText = (message as { result: string }).result;
+        console.error(`[agent] Result flagged is_error with text: ${errText}`);
+        send(ws, {
+          type: 'error',
+          message: errText,
+          code: 'billing_error',
+        });
+      } else if (message.subtype !== 'success' && 'errors' in message && message.errors?.length) {
         send(ws, {
           type: 'error',
           message: message.errors.join('\n'),

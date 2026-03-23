@@ -169,6 +169,36 @@ export function useChat() {
         break;
       }
 
+      case 'api_retry': {
+        const retryText = `API retry ${msg.attempt}/${msg.maxRetries}: ${msg.error}` +
+          (msg.errorStatus ? ` (HTTP ${msg.errorStatus})` : '') +
+          ` — retrying in ${Math.round(msg.retryDelayMs / 1000)}s`;
+        const id = currentAssistantIdRef.current;
+        if (id) {
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === id
+                ? { ...m, content: m.content + `\n\n**Retry:** ${retryText}` }
+                : m,
+            ),
+          );
+        } else {
+          const newId = crypto.randomUUID();
+          currentAssistantIdRef.current = newId;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: newId,
+              role: 'assistant',
+              content: `**Retry:** ${retryText}`,
+              timestamp: new Date(),
+              isStreaming: true,
+            },
+          ]);
+        }
+        break;
+      }
+
       case 'session_info': {
         if (msg.sessionId) setSessionId(msg.sessionId);
         if (msg.cwd) setCwd(msg.cwd);

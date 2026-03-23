@@ -11,6 +11,21 @@ import { getConfig } from './lib/config';
 const dev = process.env.NODE_ENV !== 'production';
 const config = getConfig();
 
+// Debug: verify API key loaded correctly at startup
+if (config.apiKey) {
+  const k = config.apiKey;
+  const hex = Buffer.from(k.slice(-4)).toString('hex');
+  console.log(`> API key loaded: ${k.slice(0, 12)}...${k.slice(-4)} (len=${k.length}, tail hex=${hex})`);
+  if (k !== k.trim()) {
+    console.warn('> WARNING: API key has leading/trailing whitespace!');
+  }
+  if (/[\r\n]/.test(k)) {
+    console.warn('> WARNING: API key contains newline/carriage return characters!');
+  }
+} else {
+  console.warn('> WARNING: No ANTHROPIC_API_KEY found in environment');
+}
+
 const httpServer = createServer();
 
 const app = next({ dev, httpServer });
