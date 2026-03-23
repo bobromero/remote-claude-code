@@ -1,0 +1,21 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+      - ${HOME}/.claude:/home/node/.claude:ro
+    environment:
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - DEFAULT_CWD=/workspace
+      - PERMISSION_MODE=${PERMISSION_MODE:-default}
+      - NODE_ENV=development
+      - CHOKIDAR_USEPOLLING=true
+    working_dir: /app
+    # Uncomment and set to mount a project directory:
+    # volumes:
+    #   - /path/to/your/project:/workspace
