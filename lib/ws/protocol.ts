@@ -19,7 +19,7 @@ export type ChatMessage = {
 export type PermissionResponseMessage = {
   type: 'permission_response';
   requestId: string;
-  decision: 'allow' | 'deny';
+  decision: 'allow' | 'deny' | 'allow_all';
   message?: string;
 };
 

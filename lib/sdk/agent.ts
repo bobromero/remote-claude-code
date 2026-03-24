@@ -42,10 +42,26 @@ export async function runAgent(
 
   const sdkEnv: Record<string, string | undefined> = { ...process.env, ANTHROPIC_API_KEY: config.apiKey };
 
+  const effectiveMode = merged.permissionMode as 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan';
+
+  // #region agent log
+  fetch('http://127.0.0.1:7810/ingest/2e2765a4-321c-48c9-a611-3bbbbd5a96cb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'a4ee50'},body:JSON.stringify({sessionId:'a4ee50',location:'lib/sdk/agent.ts:47',message:'runAgent called',data:{effectiveMode,cwd:merged.cwd,isBypassed:permissionBridge.isBypassed,envPermissionMode:process.env.PERMISSION_MODE,runtimePermissionMode:config.permissionMode},timestamp:Date.now(),hypothesisId:'H1,H4'})}).catch(()=>{});
+  // #endregion
+
+  const EDIT_TOOL_PATTERNS = [
+    'write', 'edit', 'create', 'multiedit', 'notebookedit',
+    'strreplace', 'insert', 'patch', 'save', 'delete',
+  ];
+
+  function isEditTool(toolName: string): boolean {
+    const lower = toolName.toLowerCase();
+    return EDIT_TOOL_PATTERNS.some((p) => lower.includes(p));
+  }
+
   const queryOptions: Parameters<typeof sdkQuery>[0]['options'] = {
     cwd: merged.cwd,
     env: sdkEnv,
-    permissionMode: merged.permissionMode as 'default' | 'acceptEdits' | 'bypassPermissions' | 'plan',
+    permissionMode: effectiveMode,
     allowedTools: merged.allowedTools.length > 0 ? merged.allowedTools : undefined,
     disallowedTools: merged.disallowedTools.length > 0 ? merged.disallowedTools : undefined,
     mcpServers: Object.keys(merged.mcpServers).length > 0 ? merged.mcpServers : undefined,
@@ -53,12 +69,53 @@ export async function runAgent(
     includePartialMessages: true,
     abortController,
     canUseTool: async (toolName, input, cbOptions) => {
-      const decision = await permissionBridge.requestPermission(toolName, input, {
-        title: cbOptions?.title,
-        description: cbOptions?.description,
-        toolUseID: cbOptions?.toolUseID,
-      });
-      return decision;
+      // #region agent log
+      fetch('http://127.0.0.1:7810/ingest/2e2765a4-321c-48c9-a611-3bbbbd5a96cb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ecb1a5'},body:JSON.stringify({sessionId:'ecb1a5',location:'lib/sdk/agent.ts:canUseTool-entry',message:'canUseTool called',data:{toolName,inputKeys:Object.keys(input),isBypassed:permissionBridge.isBypassed,effectiveMode,isEdit:isEditTool(toolName),cbOptionsKeys:cbOptions?Object.keys(cbOptions):null,toolUseID:cbOptions?.toolUseID},timestamp:Date.now(),hypothesisId:'H1,H2,H4'})}).catch(()=>{});
+      // #endregion
+
+      if (permissionBridge.isBypassed) {
+        // #region agent log
+        fetch('http://127.0.0.1:7810/ingest/2e2765a4-321c-48c9-a611-3bbbbd5a96cb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ecb1a5'},body:JSON.stringify({sessionId:'ecb1a5',location:'lib/sdk/agent.ts:canUseTool-bypassed',message:'Returning allow (bypassed)',data:{toolName},timestamp:Date.now(),hypothesisId:'H1'})}).catch(()=>{});
+        // #endregion
+        return { behavior: 'allow' as const };
+      }
+
+      switch (effectiveMode) {
+        case 'bypassPermissions':
+          return { behavior: 'allow' as const };
+        case 'plan':
+          return { behavior: 'deny' as const, message: 'Plan mode — tool execution disabled' };
+        case 'acceptEdits':
+          if (isEditTool(toolName)) {
+            // #region agent log
+            fetch('http://127.0.0.1:7810/ingest/2e2765a4-321c-48c9-a611-3bbbbd5a96cb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ecb1a5'},body:JSON.stringify({sessionId:'ecb1a5',location:'lib/sdk/agent.ts:canUseTool-acceptEdits-allow',message:'acceptEdits auto-allow edit tool',data:{toolName},timestamp:Date.now(),hypothesisId:'H2'})}).catch(()=>{});
+            // #endregion
+            return { behavior: 'allow' as const };
+          }
+          break;
+        // 'default' falls through to prompt
+      }
+
+      // #region agent log
+      fetch('http://127.0.0.1:7810/ingest/2e2765a4-321c-48c9-a611-3bbbbd5a96cb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ecb1a5'},body:JSON.stringify({sessionId:'ecb1a5',location:'lib/sdk/agent.ts:canUseTool-requestPermission',message:'Falling through to permission bridge',data:{toolName,effectiveMode},timestamp:Date.now(),hypothesisId:'H3,H5'})}).catch(()=>{});
+      // #endregion
+
+      try {
+        const decision = await permissionBridge.requestPermission(toolName, input, {
+          title: cbOptions?.title,
+          description: cbOptions?.description,
+          toolUseID: cbOptions?.toolUseID,
+        });
+        // #region agent log
+        fetch('http://127.0.0.1:7810/ingest/2e2765a4-321c-48c9-a611-3bbbbd5a96cb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ecb1a5'},body:JSON.stringify({sessionId:'ecb1a5',location:'lib/sdk/agent.ts:canUseTool-decision',message:'Permission bridge returned',data:{toolName,decision},timestamp:Date.now(),hypothesisId:'H3'})}).catch(()=>{});
+        // #endregion
+        return decision;
+      } catch (err: unknown) {
+        // #region agent log
+        fetch('http://127.0.0.1:7810/ingest/2e2765a4-321c-48c9-a611-3bbbbd5a96cb',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ecb1a5'},body:JSON.stringify({sessionId:'ecb1a5',location:'lib/sdk/agent.ts:canUseTool-error',message:'canUseTool threw error',data:{toolName,error:err instanceof Error ? err.message : String(err),stack:err instanceof Error ? err.stack : undefined},timestamp:Date.now(),hypothesisId:'H4'})}).catch(()=>{});
+        // #endregion
+        throw err;
+      }
     },
   };
 

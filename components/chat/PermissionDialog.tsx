@@ -7,7 +7,7 @@ import type { PermissionRequest } from '@/hooks/useChat';
 
 type PermissionDialogProps = {
   request: PermissionRequest | null;
-  onRespond: (requestId: string, decision: 'allow' | 'deny') => void;
+  onRespond: (requestId: string, decision: 'allow' | 'deny' | 'allow_all') => void;
 };
 
 export function PermissionDialog({ request, onRespond }: PermissionDialogProps) {
@@ -50,6 +50,12 @@ export function PermissionDialog({ request, onRespond }: PermissionDialogProps) 
             onClick={() => onRespond(request.requestId, 'deny')}
           >
             Deny
+          </Button>
+          <Button
+            variant="secondary"
+            onClick={() => onRespond(request.requestId, 'allow_all')}
+          >
+            Allow All for Session
           </Button>
           <Button
             variant="primary"

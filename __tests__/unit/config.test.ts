@@ -37,10 +37,10 @@ describe('config', () => {
     expect(getConfig().defaultCwd).toBe(process.cwd());
   });
 
-  it('defaults permissionMode to default', async () => {
+  it('defaults permissionMode to acceptEdits', async () => {
     delete process.env.PERMISSION_MODE;
     const { getConfig } = await import('@/lib/config');
-    expect(getConfig().permissionMode).toBe('default');
+    expect(getConfig().permissionMode).toBe('acceptEdits');
   });
 
   it('parses ALLOWED_TOOLS as comma-separated list', async () => {

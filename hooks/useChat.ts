@@ -247,7 +247,7 @@ export function useChat() {
   );
 
   const respondToPermission = useCallback(
-    (requestId: string, decision: 'allow' | 'deny') => {
+    (requestId: string, decision: 'allow' | 'deny' | 'allow_all') => {
       send({
         type: 'permission_response',
         requestId,

@@ -56,7 +56,7 @@ export function getConfig(): AppConfig {
     permissionMode:
       (runtimeConfig.permissionMode as AppConfig['permissionMode']) ??
       (process.env.PERMISSION_MODE as AppConfig['permissionMode']) ??
-      'default',
+      'acceptEdits',
     allowedTools: runtimeConfig.allowedTools ?? parseList(process.env.ALLOWED_TOOLS),
     disallowedTools: runtimeConfig.disallowedTools ?? parseList(process.env.DISALLOWED_TOOLS),
     mcpServers: runtimeConfig.mcpServers ?? {},
